@@ -7,7 +7,9 @@ use nix::errno::Errno;
 use nix::sys::socket::{
     recvfrom, socket, AddressFamily, LinkAddr, SockFlag, SockProtocol, SockType,
 };
+use nom::Finish;
 use packet_memory::BufferPool;
+use packets::{Packet, Parsable};
 use std::mem;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::Arc;
@@ -36,14 +38,15 @@ impl Socket {
         })
     }
     /// Recvies data from the socket by calling recvfrom
-    pub fn recv(&mut self) -> tokio::task::JoinHandle<Result<(Vec<u8>,usize), Errno>> {
+    pub fn recv(&mut self) -> tokio::task::JoinHandle<Result<Packet, Errno>> {
         let fd = Arc::clone(&self.fd);
         let buffer_pool = Arc::clone(&self.buff_pool);
         let handle = tokio::spawn(async move {
             let mut buf_pool = buffer_pool.lock().await;
             let mut buffer = buf_pool.get();
-            let ret = recvfrom::<LinkAddr>(fd.as_raw_fd(), &mut buffer)?;
-            Ok((buffer,ret.0))
+            let ret = recvfrom::<LinkAddr>(fd.as_raw_fd(), &mut buffer).unwrap();
+            let (_rem,pac) = Packet::parse(&buffer[..ret.0]).finish().unwrap();
+            Ok(pac)
         });
         handle
     }
