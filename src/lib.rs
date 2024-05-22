@@ -1,4 +1,8 @@
 pub mod packet_memory;
+<<<<<<< HEAD
+=======
+pub mod packets;
+>>>>>>> 2ec516f (Buffer Pooling & Creating of packets)
 
 use anyhow::bail;
 use libc::{sendto, sockaddr, sockaddr_ll};
@@ -6,10 +10,18 @@ use nix::errno::Errno;
 use nix::sys::socket::{
     recvfrom, socket, AddressFamily, LinkAddr, SockFlag, SockProtocol, SockType,
 };
+<<<<<<< HEAD
 use std::mem;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard};
+=======
+use packet_memory::BufferPool;
+use std::mem;
+use std::os::fd::{AsRawFd, OwnedFd};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+>>>>>>> 2ec516f (Buffer Pooling & Creating of packets)
 pub const MTU: usize = 1500;
 
 pub struct Socket {
@@ -17,6 +29,7 @@ pub struct Socket {
     fd: Arc<OwnedFd>,
     /// The buffer that will be passed to the `recvfrom()` function.
     /// It's size is the MTU constant or 1500 bytes
+<<<<<<< HEAD
     packet_buff: Arc<Mutex<[u8; MTU]>>,
 }
 
@@ -24,6 +37,13 @@ impl Socket {
     /// Creates a Raw Packet Socket with no flags
     pub fn new() -> anyhow::Result<Self> {
         todo!("Do Something about the problem with the one packet buffer. It will take ages to recieve a packet if many function are in line to write to the buffer but only one can!!");
+=======
+    buff_pool: Arc<Mutex<BufferPool>>,
+}
+impl Socket {
+    /// Creates a Raw Packet Socket with no flags
+    pub fn new() -> anyhow::Result<Self> {
+>>>>>>> 2ec516f (Buffer Pooling & Creating of packets)
         let socket = socket(
             AddressFamily::Packet,
             SockType::Raw,
@@ -32,6 +52,7 @@ impl Socket {
         )?;
         Ok(Self {
             fd: Arc::new(socket),
+<<<<<<< HEAD
             packet_buff: Arc::new(Mutex::new([0u8; MTU])),
         })
     }
@@ -43,6 +64,20 @@ impl Socket {
         let handle = tokio::spawn(async move {
             let mut buff = buffer.lock().await;
             recvfrom::<LinkAddr>(fd.as_raw_fd(), &mut *buff)
+=======
+            buff_pool: Arc::new(Mutex::new(BufferPool::new(0, MTU as u32))),
+        })
+    }
+    /// Recvies data from the socket by calling recvfrom
+    pub fn recv(&mut self) -> tokio::task::JoinHandle<Result<(Vec<u8>,usize), Errno>> {
+        let fd = Arc::clone(&self.fd);
+        let buffer_pool = Arc::clone(&self.buff_pool);
+        let handle = tokio::spawn(async move {
+            let mut buf_pool = buffer_pool.lock().await;
+            let mut buffer = buf_pool.get();
+            let ret = recvfrom::<LinkAddr>(fd.as_raw_fd(), &mut buffer)?;
+            Ok((buffer,ret.0))
+>>>>>>> 2ec516f (Buffer Pooling & Creating of packets)
         });
         handle
     }
@@ -74,6 +109,7 @@ impl Socket {
         Ok(size)
     }
 
+<<<<<<< HEAD
     fn clear_packet(&mut self) {
         self.packet_buff = Arc::new(Mutex::new([0u8; MTU]));
     }
@@ -81,4 +117,7 @@ impl Socket {
     pub async fn get_packet(&self) -> MutexGuard<[u8; MTU]> {
         self.packet_buff.lock().await
     }
+=======
+    
+>>>>>>> 2ec516f (Buffer Pooling & Creating of packets)
 }
