@@ -1,27 +1,21 @@
-pub mod packet_memory;
 pub mod packets;
+pub mod errors;
 
 use anyhow::bail;
-use libc::{sendto, sockaddr, sockaddr_ll};
+use libc::{ioctl, sendto, sockaddr, sockaddr_ll, FIONREAD};
 use nix::errno::Errno;
 use nix::sys::socket::{
     recvfrom, socket, AddressFamily, LinkAddr, SockFlag, SockProtocol, SockType,
 };
-use nom::Finish;
-use packet_memory::BufferPool;
 use packets::{Packet, Parsable};
-use std::mem;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::mem;
 pub const MTU: usize = 1500;
 
 pub struct Socket {
     /// The socket
     fd: Arc<OwnedFd>,
-    /// The buffer that will be passed to the `recvfrom()` function.
-    /// It's size is the MTU constant or 1500 bytes
-    buff_pool: Arc<Mutex<BufferPool>>,
 }
 impl Socket {
     /// Creates a Raw Packet Socket with no flags
@@ -34,18 +28,23 @@ impl Socket {
         )?;
         Ok(Self {
             fd: Arc::new(socket),
-            buff_pool: Arc::new(Mutex::new(BufferPool::new(0, MTU as u32))),
         })
     }
     /// Recvies data from the socket by calling recvfrom
     pub fn recv(&mut self) -> tokio::task::JoinHandle<Result<Packet, Errno>> {
         let fd = Arc::clone(&self.fd);
-        let buffer_pool = Arc::clone(&self.buff_pool);
         let handle = tokio::spawn(async move {
-            let mut buf_pool = buffer_pool.lock().await;
-            let mut buffer = buf_pool.get();
+            let mut size = 0;
+            let mut code = unsafe { ioctl(fd.as_raw_fd(), FIONREAD, &mut size) };
+            while size == 0 {
+                code = unsafe { ioctl(fd.as_raw_fd(), FIONREAD, &mut size) };
+            }
+            if code < 0 {
+                return Err(Errno::last())
+            }
+            let mut buffer = vec![0u8; size as usize];
             let ret = recvfrom::<LinkAddr>(fd.as_raw_fd(), &mut buffer).unwrap();
-            let (_rem,pac) = Packet::parse(&buffer[..ret.0]).finish().unwrap();
+            let (_rem, pac) = Packet::parse(&buffer[..ret.0]).unwrap();
             Ok(pac)
         });
         handle
@@ -77,6 +76,4 @@ impl Socket {
         }
         Ok(size)
     }
-
-    
 }

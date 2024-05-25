@@ -9,7 +9,7 @@ pub enum DataLink {
 }
 
 impl Parsable for DataLink {
-    fn parse(source: &[u8]) -> nom::IResult<&[u8], Self>
+    fn parse(source: &[u8]) -> anyhow::Result<(&[u8], Self)>
         where
             Self: Sized 
     {
